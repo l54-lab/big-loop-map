@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Big Loop — Interactive Route Map</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --ink: #0F1B2D;
+    --ink-2: #16263D;
+    --land: #E7DFC6;
+    --gold: #E2A33D;
+    --gold-bright: #F2BE5E;
+    --cyan: #6FC4D8;
+    --cream: #F4EFDF;
+    --muted: #8FA3BD;
+    --panel: #142335;
+    --diamond: #B888D8;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0; padding:0;
+    background: var(--ink);
+    color: var(--cream);
+    font-family: 'Space Grotesk', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap{
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 36px 24px 60px;
+  }
+
+  header{
+    display:flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid rgba(143,163,189,0.25);
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+  }
+
+  h1{
+    font-size: 30px;
+    font-weight: 600;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  header p{
+    margin: 0;
+    color: var(--muted);
+    font-size: 14.5px;
+    max-width: 50ch;
+    line-height: 1.5;
+  }
+
+  .stats{ display:flex; gap: 22px; flex-wrap: wrap; }
+  .stat{ text-align: right; font-family: 'IBM Plex Mono', monospace; color: var(--gold-bright); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .stat b{ display:block; font-size: 20px; color: var(--cream); font-weight: 600; }
+
+  .map-shell{
+    position: relative;
+    background: var(--ink-2);
+    border-radius: 14px;
+    border: 1px solid rgba(143,163,189,0.18);
+    overflow: hidden;
+  }
+  .map-shell svg{ display: block; width: 100%; height: auto; }
+  .land{ fill: var(--land); }
+
+  .route{ fill: none; stroke: var(--gold); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
+  .photo-line{ stroke: var(--diamond); stroke-width: 1.4; stroke-dasharray: 3 4; opacity: 0.75; }
+
+  .marker-hit{ fill: transparent; cursor: pointer; }
+  .marker-dot{ fill: var(--ink); stroke: var(--gold); stroke-width: 2.6; transition: r 120ms ease, fill 120ms ease; }
+  .marker.has-notes .marker-dot{ stroke: var(--cyan); }
+  .marker.active .marker-dot, .marker:hover .marker-dot{ fill: var(--gold); r: 8.5; }
+
+  .photo-dot{
+    fill: var(--ink); stroke: var(--diamond); stroke-width: 2.4;
+    transition: transform 120ms ease, fill 120ms ease;
+    transform-box: fill-box; transform-origin: center;
+  }
+  .photo.active .photo-dot, .photo:hover .photo-dot{ fill: var(--diamond); transform: scale(1.25); }
+
+  .marker-label{
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+    fill: var(--ink); paint-order: stroke; stroke: var(--land); stroke-width: 3px;
+  }
+  .photo-label{
+    font-family: 'Space Grotesk', sans-serif; font-style: italic; font-size: 10.5px; font-weight: 500;
+    fill: #4a3a5c; paint-order: stroke; stroke: var(--land); stroke-width: 3px;
+  }
+
+  .legend{
+    position: absolute; left: 18px; bottom: 16px;
+    background: rgba(15,27,45,0.82); border: 1px solid rgba(143,163,189,0.25); border-radius: 8px;
+    padding: 10px 14px; font-size: 11.5px; color: var(--muted);
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  }
+  .legend .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; border:2px solid var(--gold); margin-right:5px; }
+  .legend .dot.done{ border-color: var(--cyan); }
+  .legend .diamond{ width:8px; height:8px; display:inline-block; border:2px solid var(--diamond); transform: rotate(45deg); margin-right:6px; }
+
+  .caption{
+    display:flex; justify-content: space-between; align-items: baseline;
+    margin-top: 14px; color: var(--muted); font-size: 13px; flex-wrap: wrap; gap: 8px;
+  }
+  .caption b{ color: var(--cream); font-weight: 500; }
+
+  .lessons{ margin-top: 26px; border-top: 1px solid rgba(143,163,189,0.25); padding-top: 20px; }
+  .lessons h2{ font-size: 15px; font-weight: 600; margin: 0 0 12px; color: var(--gold-bright); }
+  .lessons-grid{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .lesson{ background: var(--panel); border: 1px solid rgba(143,163,189,0.18); border-radius: 10px; padding: 14px 16px; }
+  .lesson h3{ margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--cream); }
+  .lesson p{ margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+
+  .tip{
+    position: fixed; pointer-events: none; background: var(--panel);
+    border: 1px solid rgba(143,163,189,0.3); border-radius: 8px; padding: 9px 12px;
+    font-size: 12.5px; color: var(--muted); max-width: 240px; z-index: 40;
+    opacity: 0; transform: translateY(4px); transition: opacity 120ms ease, transform 120ms ease; line-height: 1.45;
+  }
+  .tip.show{ opacity: 1; transform: translateY(0); }
+  .tip .code{ font-family:'IBM Plex Mono', monospace; color: var(--gold-bright); font-weight:600; font-size: 13px; }
+  .tip.photo .code{ font-family:'Space Grotesk', sans-serif; font-style: italic; color: var(--diamond); }
+  .tip .empty{ font-style: italic; opacity: 0.8; }
+  .tip div + div{ margin-top: 4px; }
+
+  .panel-backdrop{
+    position: fixed; inset: 0; background: rgba(6,11,19,0.55); z-index: 49;
+    opacity: 0; pointer-events: none; transition: opacity 160ms ease;
+  }
+  .panel-backdrop.show{ opacity: 1; pointer-events: auto; }
+
+  .panel{
+    position: fixed; top: 0; right: 0; height: 100%; width: min(400px, 92vw);
+    background: var(--panel); border-left: 1px solid rgba(143,163,189,0.25); z-index: 50;
+    transform: translateX(100%); transition: transform 200ms ease; padding: 26px 24px; overflow-y: auto;
+  }
+  .panel.show{ transform: translateX(0); }
+
+  .panel-close{
+    position: absolute; top: 20px; right: 20px; background: none; border: none;
+    color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  .panel-close:hover{ color: var(--cream); }
+  .panel-close:focus-visible, .marker:focus-visible .marker-dot{ outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+
+  .panel .code{ font-family: 'IBM Plex Mono', monospace; font-size: 26px; color: var(--gold-bright); font-weight: 600; margin: 0 0 2px; }
+  .panel .city{ color: var(--muted); font-size: 14px; margin: 0 0 24px; }
+
+  .field{ margin-bottom: 20px; }
+  .field label{
+    display:block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--gold); margin-bottom: 6px; font-weight: 600;
+  }
+  .field .edit{
+    background: rgba(244,239,223,0.04); border: 1px solid rgba(143,163,189,0.25); border-radius: 7px;
+    padding: 10px 12px; font-size: 14px; line-height: 1.5; color: var(--cream); min-height: 44px; outline: none;
+  }
+  .field .edit:focus{ border-color: var(--gold); background: rgba(244,239,223,0.07); }
+  .field .edit:empty:before{ content: attr(data-placeholder); color: var(--muted); font-style: italic; }
+
+  .save-note{ font-size: 11.5px; color: var(--muted); display:flex; align-items:center; gap: 6px; margin-top: 4px; height: 14px; }
+  .save-note.show{ color: var(--cyan); }
+
+  footer{ margin-top: 22px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+
+  @media (max-width: 640px){
+    h1{ font-size: 24px; }
+    header{ align-items: flex-start; }
+    .stats{ gap: 14px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>The Big Loop</h1>
+      <p>A Palo Alto–to–Palo Alto circuit around the four corners of the US, May 2026. Hover a marker for the story, click one to add your own notes.</p>
+    </div>
+    <div class="stats">
+      <div class="stat">Days<b>25</b></div>
+      <div class="stat">Airports<b>21</b></div>
+      <div class="stat">States<b>14</b></div>
+      <div class="stat">Nautical mi<b>6,000+</b></div>
+    </div>
+  </header>
+
+  <div class="map-shell">
+    <svg id="mapSvg" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet">
+      <path class="land" d="M70,40 L60,70 L65,110 L55,150 L50,190 L45,230 L55,270 L50,300 L55,340 L65,380 L75,410
+        L140,430 L220,440 L300,445 L340,460 L360,480 L400,500 L430,520 L470,530 L500,510 L520,490
+        L560,500 L600,510 L630,495 L660,500 L690,510 L720,520 L740,540 L750,570 L745,540 L735,510
+        L730,480 L720,450 L715,420 L720,390 L710,370 L715,340 L720,310 L730,290 L740,270 L735,250
+        L745,230 L760,210 L700,150 L600,130 L560,150 L520,130 L450,140 L380,130 L300,140 L220,130
+        L150,120 L90,90 Z" />
+
+      <polyline class="route" id="routeLine" points="" />
+      <g id="photoLines"></g>
+      <g id="markers"></g>
+      <g id="photoMarkers"></g>
+    </svg>
+
+    <div class="legend">
+      <span><span class="dot"></span>landing stop</span>
+      <span><span class="dot done"></span>notes added</span>
+      <span><span class="diamond"></span>photo waypoint</span>
+    </div>
+  </div>
+
+  <div class="caption">
+    <span><b>The Complete US Loop</b> — 55.0 Hobbs hours, 618 gallons of fuel, 10 quarts of oil, one Cessna 182 with zero mechanical problems.</span>
+    <span id="notesCount"></span>
+  </div>
+
+  <div class="lessons">
+    <h2>Lessons from the road</h2>
+    <div class="lessons-grid">
+      <div class="lesson">
+        <h3>The East Coast is flat</h3>
+        <p>Out west every flight plan has to account for terrain and engine-out options. One day they flew five hours straight and level at 2,000' under a 3,000' overcast — no terrain to worry about at all.</p>
+      </div>
+      <div class="lesson">
+        <h3>The East Coast has weather</h3>
+        <p>Calibrating what NEXRAD colors actually mean took practice: green was fine, yellow turned out to be manageable (if bug-cleaning) rain, and orange was never tested.</p>
+      </div>
+      <div class="lesson">
+        <h3>Watch the time zones</h3>
+        <p>The same mistake, three separate times — promising family a 6pm arrival that was really 7pm once the next time zone caught up with them.</p>
+      </div>
+      <div class="lesson">
+        <h3>Pack light, pack smart</h3>
+        <p>One rollaboard each plus a 10-gallon Home Depot storage bin ("dresser drawers") that stayed in the plane — clothes got swapped between the two during gas stops.</p>
+      </div>
+      <div class="lesson">
+        <h3>Fuel prices swing hard</h3>
+        <p>ForeFlight's Fuel Price layer let them route lunch stops around cheap gas — averaging $6.25/gallon for the trip, while home base at KPAO was charging $8.40.</p>
+      </div>
+      <div class="lesson">
+        <h3>Small airports, big kindness</h3>
+        <p>Eight courtesy cars borrowed along the way, several left with keys under the mat after hours — general aviation people are, as the article puts it, "just plain nice."</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Positions are schematic, roughly matched to the original route sketch — not for navigation. Purple diamonds mark aerial photo passes rather than landings. Click any circle to add or edit weather, a local spot, or a detail worth remembering for that stop — your notes are saved in your browser automatically.
+  </footer>
+</div>
+
+<div class="tip" id="tip">
+  <div class="code" id="tipCode"></div>
+  <div id="tipBody"></div>
+</div>
+
+<div class="panel-backdrop" id="backdrop"></div>
+<div class="panel" id="panel">
+  <button class="panel-close" id="panelClose" aria-label="Close">&times;</button>
+  <div class="code" id="panelCode"></div>
+  <div class="city" id="panelCity"></div>
+
+  <div class="field">
+    <label>Weather</label>
+    <div class="edit" id="editWeather" contenteditable="true" data-placeholder="What was the weather like here?"></div>
+  </div>
+  <div class="field">
+    <label>Popular local spot</label>
+    <div class="edit" id="editSpot" contenteditable="true" data-placeholder="Anything worth a stop nearby?"></div>
+  </div>
+  <div class="field">
+    <label>Worth knowing</label>
+    <div class="edit" id="editFact" contenteditable="true" data-placeholder="Any other detail worth remembering?"></div>
+  </div>
+  <div class="save-note" id="saveNote">Saved</div>
+</div>
+
+<script>
+(function(){
+  const stops = [
+    { code: "KPAO", city: "Palo Alto, CA — home base", x: 110, y: 330,
+      weather: "",
+      spot: "Departure and return point of the whole loop.",
+      fact: "Landed back here 25 days after setting out, with zero mechanical problems the entire way around." },
+    { code: "—", city: "Oregon coast (identifier not legible on the source map)", x: 140, y: 150,
+      weather: "", spot: "", fact: "First half of the shortest day of the trip — just 20 minutes in the air." },
+    { code: "S39", city: "Oregon", x: 168, y: 143,
+      weather: "", spot: "",
+      fact: "The other half of the 20-minute hop — the shortest flying day of the entire loop, one small Oregon airport to another." },
+    { code: "KBZN", city: "Bozeman, MT", x: 330, y: 150,
+      weather: "",
+      spot: "Gateway stop on the way toward Yellowstone country.",
+      fact: "Courtesy car here was a brand-new black Chevy Tahoe." },
+    { code: "KPIR", city: "Pierre, SD", x: 480, y: 210,
+      weather: "Flew this leg watching NEXRAD closely — green, yellow, and orange returns en route.",
+      spot: "South Dakota's state capital, on the Missouri River. Mount Rushmore is a short hop away.",
+      fact: "This is where they first learned to read rain on radar: yellow turned out to be solid, bug-washing rain — manageable, just intense." },
+    { code: "KRPJ", city: "Rochelle, IL", x: 610, y: 260,
+      weather: "", spot: "", fact: "" },
+    { code: "KGDK", city: "Ohio", x: 630, y: 320,
+      weather: "",
+      spot: "Close enough to Dayton for a visit to the National Museum of the U.S. Air Force.",
+      fact: "One of several Ohio stops — the state's list of sights was so long it had to be pruned hard: Cleveland, Sandusky, Dayton, and a family hometown all competed for time." },
+    { code: "16G", city: "Ohio", x: 660, y: 300,
+      weather: "",
+      spot: "In range of the Rock and Roll Hall of Fame (Cleveland) and Cedar Point (Sandusky).",
+      fact: "Sporty's, back at their home field of I69 in Batavia, OH, gives away a free barbecue every Saturday to anyone who drops in." },
+    { code: "KDKK", city: "Near Buffalo, NY", x: 700, y: 250,
+      weather: "",
+      spot: "Close to Niagara Falls, overflown for aerial photos on the way through.",
+      fact: "" },
+    { code: "KOWD", city: "Norwood, MA (Boston)", x: 770, y: 180,
+      weather: "A 51-knot headwind slowed this route at times.",
+      spot: "Family visit in the Boston area.",
+      fact: "Departure point for the longest day of the trip — 6.5 hours to Ohio, with aerial photography of Dartmouth College and Niagara Falls along the way." },
+    { code: "KSNC", city: "Near New York City", x: 760, y: 220,
+      weather: "",
+      spot: "Staging point for the Manhattan \"Skyline Route\" flown at 1,500'.",
+      fact: "The G1000 called out \"Obstacle! Pull up!\" for the Freedom Tower while flying up the Hudson close enough to see people on their balconies." },
+    { code: "KJGG", city: "Williamsburg, VA", x: 720, y: 350,
+      weather: "",
+      spot: "Sits inside Virginia's Historic Triangle, by Colonial Williamsburg and Jamestown.",
+      fact: "The Wright Brothers Memorial at Kitty Hawk (KFFA) was on the wish list but had to be skipped for weather." },
+    { code: "KGMU", city: "Greenville, SC", x: 660, y: 430,
+      weather: "",
+      spot: "Family visit in South Carolina.",
+      fact: "" },
+    { code: "KLRO", city: "", x: 690, y: 460,
+      weather: "", spot: "", fact: "" },
+    { code: "KOLV", city: "Olive Branch, MS (near Memphis)", x: 560, y: 440,
+      weather: "",
+      spot: "Family visit in Mississippi.",
+      fact: "" },
+    { code: "KCHK", city: "Chickasha, OK", x: 430, y: 440,
+      weather: "",
+      spot: "Home of a famous 50-foot roadside \"leg lamp\" attraction.",
+      fact: "Called ahead to confirm $5/gallon gas was real — the airport manager had a courtesy car waiting and talked up the town (rhymes with \"ricochet\")." },
+    { code: "0E0", city: "Texas panhandle", x: 350, y: 430,
+      weather: "", spot: "", fact: "" },
+    { code: "KSJN", city: "St. Johns, AZ", x: 280, y: 420,
+      weather: "",
+      spot: "Close enough to New Mexico for a family visit there too.",
+      fact: "The courtesy car here was a retired police cruiser — decal half peeled off, spotlight still working." },
+    { code: "P52", city: "Grand Canyon West, AZ", x: 235, y: 405,
+      weather: "High desert — big swings between day and night temperatures.",
+      spot: "Right at the edge of Grand Canyon West and the Skywalk.",
+      fact: "Operated by the Hualapai Tribe — one of the \"funky airports\" on the original wish list." },
+    { code: "KSEZ", city: "Sedona, AZ", x: 225, y: 393,
+      weather: "",
+      spot: "The airport sits on top of a mesa above town, with red-rock views on approach.",
+      fact: "Landing on the Sedona mesa was one of the trip's original must-do items, on the list since before the route was even planned." },
+    { code: "KHND", city: "Henderson, NV (Las Vegas)", x: 180, y: 370,
+      weather: "Hot, dry desert air with strong afternoon winds.",
+      spot: "Close to both the Las Vegas Strip and Lake Mead.",
+      fact: "A reliever airport that takes general aviation traffic off busy Harry Reid." },
+  ];
+
+  const photos = [
+    { name: "Mount Rushmore", near: "KPIR", x: 460, y: 195,
+      note: "Overflown near Pierre, SD — one of the aerial-photography targets on the original wish list." },
+    { name: "Niagara Falls", near: "KDKK", x: 705, y: 235,
+      note: "Photographed on the long 6.5-hour day between Boston and Ohio." },
+    { name: "Dartmouth College", near: "KOWD", x: 790, y: 165,
+      note: "Also photographed on the Boston-to-Ohio leg, into a 51-knot headwind." },
+    { name: "Manhattan Skyline", near: "KSNC", x: 748, y: 255,
+      note: "Flown up the Hudson at 1,500' on the \"Skyline Route\" — close enough to see people on their balconies. The G1000 called out \"Obstacle! Pull up!\" for the Freedom Tower." },
+  ];
+
+  document.getElementById('notesCount').textContent = "";
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const markersG = document.getElementById('markers');
+  const photoG = document.getElementById('photoMarkers');
+  const photoLinesG = document.getElementById('photoLines');
+  const routeLine = document.getElementById('routeLine');
+
+  routeLine.setAttribute('points', stops.map(s => s.x + "," + s.y).join(" ") + " " + stops[0].x + "," + stops[0].y);
+
+  const noteStore = {};
+  const STORAGE_PREFIX = 'blindspot-map:';
+
+  function defaultsFor(code){
+    const s = stops.find(s => s.code === code);
+    return s ? { weather: s.weather, spot: s.spot, fact: s.fact } : { weather:"", spot:"", fact:"" };
+  }
+  function currentNotes(code){ return noteStore[code] || defaultsFor(code); }
+  function hasAnyNotes(code){ const n = currentNotes(code); return !!(n.weather || n.spot || n.fact); }
+  function markerEl(code){ return markersG.querySelector('.marker[data-code="'+code+'"]'); }
+  function refreshMarkerState(code){
+    const el = markerEl(code);
+    if(!el) return;
+    el.classList.toggle('has-notes', hasAnyNotes(code));
+  }
+
+  stops.forEach(s => {
+    const g = document.createElementNS(svgNS, "g");
+    g.setAttribute("class", "marker");
+    g.setAttribute("data-code", s.code);
+    g.setAttribute("tabindex", "0");
+    g.setAttribute("role", "button");
+    g.setAttribute("aria-label", s.code + (s.city ? ", " + s.city : ""));
+
+    const hit = document.createElementNS(svgNS, "circle");
+    hit.setAttribute("class", "marker-hit");
+    hit.setAttribute("cx", s.x); hit.setAttribute("cy", s.y); hit.setAttribute("r", 14);
+
+    const dot = document.createElementNS(svgNS, "circle");
+    dot.setAttribute("class", "marker-dot");
+    dot.setAttribute("cx", s.x); dot.setAttribute("cy", s.y); dot.setAttribute("r", 6);
+
+    const label = document.createElementNS(svgNS, "text");
+    label.setAttribute("class", "marker-label");
+    label.setAttribute("x", s.x + 10);
+    label.setAttribute("y", s.y - 8);
+    label.textContent = s.code;
+
+    g.appendChild(hit); g.appendChild(dot); g.appendChild(label);
+    markersG.appendChild(g);
+
+    g.addEventListener('mouseenter', (e) => showTip(s.code, e));
+    g.addEventListener('mousemove', moveTip);
+    g.addEventListener('mouseleave', hideTip);
+    g.addEventListener('click', () => openPanel(s.code));
+    g.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openPanel(s.code); }
+    });
+
+    refreshMarkerState(s.code);
+  });
+
+  photos.forEach(p => {
+    const nearStop = stops.find(s => s.code === p.near);
+    if(nearStop){
+      const line = document.createElementNS(svgNS, "line");
+      line.setAttribute("class", "photo-line");
+      line.setAttribute("x1", nearStop.x); line.setAttribute("y1", nearStop.y);
+      line.setAttribute("x2", p.x); line.setAttribute("y2", p.y);
+      photoLinesG.appendChild(line);
+    }
+
+    const g = document.createElementNS(svgNS, "g");
+    g.setAttribute("class", "marker photo");
+    g.setAttribute("data-name", p.name);
+
+    const hit = document.createElementNS(svgNS, "circle");
+    hit.setAttribute("class", "marker-hit");
+    hit.setAttribute("cx", p.x); hit.setAttribute("cy", p.y); hit.setAttribute("r", 12);
+
+    const dot = document.createElementNS(svgNS, "rect");
+    dot.setAttribute("class", "photo-dot");
+    dot.setAttribute("x", p.x - 5); dot.setAttribute("y", p.y - 5);
+    dot.setAttribute("width", 10); dot.setAttribute("height", 10);
+    dot.setAttribute("transform", "rotate(45 " + p.x + " " + p.y + ")");
+
+    const label = document.createElementNS(svgNS, "text");
+    label.setAttribute("class", "photo-label");
+    label.setAttribute("x", p.x + 9);
+    label.setAttribute("y", p.y - 8);
+    label.textContent = p.name;
+
+    g.appendChild(hit); g.appendChild(dot); g.appendChild(label);
+    photoG.appendChild(g);
+
+    g.addEventListener('mouseenter', (e) => showPhotoTip(p, e));
+    g.addEventListener('mousemove', moveTip);
+    g.addEventListener('mouseleave', hideTip);
+  });
+
+  const tip = document.getElementById('tip');
+  const tipCode = document.getElementById('tipCode');
+  const tipBody = document.getElementById('tipBody');
+
+  function showTip(code, evt){
+    const s = stops.find(s => s.code === code);
+    const n = currentNotes(code);
+    tip.classList.remove('photo');
+    tipCode.textContent = code + (s.city ? " — " + s.city : "");
+    const parts = [];
+    if(n.weather) parts.push("<div>" + escapeHtml(n.weather) + "</div>");
+    if(n.spot) parts.push("<div>" + escapeHtml(n.spot) + "</div>");
+    if(n.fact) parts.push("<div>" + escapeHtml(n.fact) + "</div>");
+    tipBody.innerHTML = parts.length ? parts.join("") : '<div class="empty">Click to add notes</div>';
+    tip.classList.add('show');
+    moveTip(evt);
+  }
+
+  function showPhotoTip(p, evt){
+    tip.classList.add('photo');
+    tipCode.textContent = p.name;
+    tipBody.innerHTML = "<div>" + escapeHtml(p.note) + "</div>";
+    tip.classList.add('show');
+    moveTip(evt);
+  }
+
+  function moveTip(evt){
+    const x = evt.clientX, y = evt.clientY;
+    const rect = tip.getBoundingClientRect();
+    let left = x + 16, top = y + 16;
+    if(left + rect.width > window.innerWidth - 12) left = x - rect.width - 16;
+    if(top + rect.height > window.innerHeight - 12) top = y - rect.height - 16;
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+  }
+  function hideTip(){ tip.classList.remove('show'); }
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  const panel = document.getElementById('panel');
+  const backdrop = document.getElementById('backdrop');
+  const panelCode = document.getElementById('panelCode');
+  const panelCity = document.getElementById('panelCity');
+  const editWeather = document.getElementById('editWeather');
+  const editSpot = document.getElementById('editSpot');
+  const editFact = document.getElementById('editFact');
+  const saveNote = document.getElementById('saveNote');
+  let activeCode = null;
+
+  function openPanel(code){
+    activeCode = code;
+    hideTip();
+    document.querySelectorAll('.marker.active').forEach(m => m.classList.remove('active'));
+    const el = markerEl(code);
+    if(el) el.classList.add('active');
+
+    const s = stops.find(s => s.code === code);
+    panelCode.textContent = code;
+    panelCity.textContent = s.city || "";
+
+    if(!noteStore[code]){
+      noteStore[code] = loadNotes(code);
+    }
+    const notes = noteStore[code];
+    editWeather.textContent = notes.weather || "";
+    editSpot.textContent = notes.spot || "";
+    editFact.textContent = notes.fact || "";
+
+    panel.classList.add('show');
+    backdrop.classList.add('show');
+  }
+
+  function closePanel(){
+    panel.classList.remove('show');
+    backdrop.classList.remove('show');
+    document.querySelectorAll('.marker.active').forEach(m => m.classList.remove('active'));
+    activeCode = null;
+  }
+
+  document.getElementById('panelClose').addEventListener('click', closePanel);
+  backdrop.addEventListener('click', closePanel);
+  document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && panel.classList.contains('show')) closePanel(); });
+
+  function loadNotes(code){
+    try{
+      const raw = localStorage.getItem(STORAGE_PREFIX + code);
+      if(raw) return JSON.parse(raw);
+    }catch(e){ /* private browsing, blocked storage, or nothing saved yet */ }
+    return defaultsFor(code);
+  }
+
+  function saveNotes(code){
+    const data = {
+      weather: editWeather.textContent.trim(),
+      spot: editSpot.textContent.trim(),
+      fact: editFact.textContent.trim(),
+    };
+    noteStore[code] = data;
+    refreshMarkerState(code);
+    updateNotesCount();
+    try{
+      localStorage.setItem(STORAGE_PREFIX + code, JSON.stringify(data));
+      saveNote.textContent = "Saved";
+    }catch(e){
+      saveNote.textContent = "Couldn't save — your browser may be blocking storage";
+    }
+    saveNote.classList.add('show');
+    clearTimeout(saveNote._t);
+    saveNote._t = setTimeout(() => saveNote.classList.remove('show'), 1200);
+  }
+
+  [editWeather, editSpot, editFact].forEach(el => {
+    el.addEventListener('blur', () => { if(activeCode) saveNotes(activeCode); });
+  });
+
+  function updateNotesCount(){
+    const withNotes = stops.filter(s => hasAnyNotes(s.code)).length;
+    document.getElementById('notesCount').textContent = withNotes + " of " + stops.length + " stops annotated";
+  }
+
+  (function preload(){
+    for(const s of stops){
+      const notes = loadNotes(s.code);
+      if(notes.weather || notes.spot || notes.fact){
+        noteStore[s.code] = notes;
+        refreshMarkerState(s.code);
+      }
+    }
+    updateNotesCount();
+  })();
+})();
+</script>
+</body>
+</html>
+
